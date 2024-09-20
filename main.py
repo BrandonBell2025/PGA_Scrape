@@ -9,6 +9,8 @@ from bs4 import BeautifulSoup
 import re
 import pandas as pd
 import time
+from dotenv import load_dotenv
+import os
 
 def scrape(url):
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
@@ -49,20 +51,89 @@ def scrapeStats(soup):
 def searchPlayerID(csv_file, playerName):
     df = pd.read_csv(csv_file)
     
-    # Search for the player by name
-    result = df[df['Player Name'].str.contains(playerName, case=False, na=False)]
+    # Clean up whitespace issues in player names
+    df['Player Name'] = df['Player Name'].str.strip()
+
+    # Search for the player by name (ignoring case)
+    result = df[df['Player Name'].str.contains(playerName.strip(), case=False, na=False)]
     
     if not result.empty:
-        # Return the player ID if found
+        # Return the first matching player ID if found
         return result['Player ID'].values[0]
     else:
+        print(f"Player '{playerName}' not found.")
         return None
 
-def createCSV(stats, playerName):
+def createCSV(stats, playerName, temperature, has_precipitation, precipitation_type, wind_speed, visibility):
     df = pd.DataFrame(stats, columns=['Title', 'Stat', 'Rank'])
+
+    # Add weather-related columns with "1.0x" values
+    if has_precipitation:
+        precipitation = precipitation_type
+    else: 
+        precipitation = "Sunny"
+
+    df[f'Temp Impact ({temperature}°F)'] = "1.0x"
+    df[f'Precipitation Impact ({precipitation})'] = "1.0x"
+    df[f'Wind Impact ({wind_speed}mph)'] = "1.0x"
+    df[f'Visibility ({visibility}m)'] = "1.0x"
+
     newPlayerName = playerName.replace(" ", "_")
     df.to_csv(f'{newPlayerName}_stats.csv', index=False)
     print("Data saved to player_stats.csv.")
+
+def weather(cityName):
+    load_dotenv()
+    WEATHER_API = os.getenv('WEATHER_API')
+    
+    url = "http://dataservice.accuweather.com/locations/v1/cities/search"
+    params = {
+        "apikey": WEATHER_API,
+        "q": cityName,
+        "language": "en-us",
+        "details": "false"
+    }
+    
+    response = requests.get(url, params=params)
+    if response.status_code == 200:
+        data = response.json()
+        if data:
+            location_key = data[0]['Key']  # Assuming we want the first match
+            print(f"Location Key for {cityName}: {location_key}")
+            return location_key
+        else:
+            print("No results found.")
+    else:
+        print(f"Error: {response.status_code}")
+    
+def get_current_conditions(location_key):
+    # Load the API key from the environment variables
+    load_dotenv()
+    WEATHER_API = os.getenv('WEATHER_API')
+    
+    # Define the API endpoint for current conditions using the location key
+    url = f"http://dataservice.accuweather.com/currentconditions/v1/{location_key}"
+    params = {
+        "apikey": WEATHER_API,
+        "language": "en-us",
+        "details": "true"
+    }
+    
+    # Make the GET request to the API to get current conditions
+    response = requests.get(url, params=params)
+    
+    # Check if the request was successful
+    if response.status_code == 200:
+        data = response.json()
+        if data:
+            current_conditions = data[0]
+        else:
+            print("No current conditions data available.")
+    else:
+        print(f"Error fetching current conditions: {response.status_code}")
+
+    return current_conditions
+
 
 def main ():
     playerName = input("Enter player of interest: ")
@@ -73,8 +144,18 @@ def main ():
     soup = scrape(url)
     
     stats = scrapeStats(soup)
-    createCSV(stats, playerName)
+    
 
+    city = input("Enter the location (city) of the golf tournament: ")
+    locationKey = weather(city)
+    currentConditions = get_current_conditions(locationKey)
+    temperature = currentConditions['Temperature']['Imperial']['Value']  
+    has_precipitation = currentConditions['HasPrecipitation']
+    precipitation_type = currentConditions.get('PrecipitationType', 'None')
+    wind_speed = currentConditions['Wind']['Speed']['Imperial']['Value']  
+    visibility = currentConditions['Visibility']['Imperial']['Value']  
+
+    createCSV(stats, playerName, temperature, has_precipitation, precipitation_type, wind_speed, visibility)
 
 if __name__ == "__main__":
     main()
