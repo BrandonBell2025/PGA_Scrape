@@ -1,9 +1,6 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 import requests
 from bs4 import BeautifulSoup
 import re
@@ -13,8 +10,8 @@ from dotenv import load_dotenv
 import os
 
 def scrape(url):
+    #Setup driver and try to load the webpage based on the user input
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
-    
     try:
         driver.get(url)
 
@@ -29,12 +26,15 @@ def scrape(url):
     return soup
 
 def scrapeStats(soup):
+    #Capture html for all of the titles of the stats we are scraping
     allStatTitles = soup.find_all('span', class_='chakra-text css-h2dnm1')
     statTitle = [item.text.strip() for item in allStatTitles]
 
+    #Capture html for all the stats we are scraping
     allStatValues = soup.find_all('span', class_='chakra-text css-1psnea4')
     statValues = [item.text.strip() for item in allStatValues]
 
+    #Pair stat title with stat value
     data = []
     for i in range(len(statTitle)):
         # Assuming there are exactly 2 values for each title
@@ -49,6 +49,7 @@ def scrapeStats(soup):
     return data 
 
 def searchPlayerID(csv_file, playerName):
+    #Search player_IDs.csv for the inputted player name to retrieve player ID required for url
     df = pd.read_csv(csv_file)
     
     # Clean up whitespace issues in player names
@@ -65,24 +66,25 @@ def searchPlayerID(csv_file, playerName):
         return None
 
 def createCSV(stats, playerName, temperature, has_precipitation, precipitation_type, wind_speed, visibility):
-    df = pd.DataFrame(stats, columns=['Title', 'Stat', 'Rank'])
+    df = pd.DataFrame(stats, columns=['Stat Name', 'Stat Value', 'PGA Rank'])
 
-    # Add weather-related columns with "1.0x" values
+    # Weather related stats will have 1.0x as a placeholder value. Weather API data is reflected in title of column
     if has_precipitation:
         precipitation = precipitation_type
     else: 
         precipitation = "Sunny"
-
     df[f'Temp Impact ({temperature}°F)'] = "1.0x"
     df[f'Precipitation Impact ({precipitation})'] = "1.0x"
     df[f'Wind Impact ({wind_speed}mph)'] = "1.0x"
     df[f'Visibility ({visibility}m)'] = "1.0x"
 
+    #Create csv file with player name in the title
     newPlayerName = playerName.replace(" ", "_")
     df.to_csv(f'{newPlayerName}_stats.csv', index=False)
     print("Data saved to player_stats.csv.")
 
 def weather(cityName):
+    #retrieve the unique identifier for the inputted city to be used in subsequent weather function
     load_dotenv()
     WEATHER_API = os.getenv('WEATHER_API')
     
@@ -104,10 +106,9 @@ def weather(cityName):
         else:
             print("No results found.")
     else:
-        print(f"Error: {response.status_code}")
+        print(f"Error in retrieving city key: {response.status_code}")
     
 def get_current_conditions(location_key):
-    # Load the API key from the environment variables
     load_dotenv()
     WEATHER_API = os.getenv('WEATHER_API')
     
@@ -136,26 +137,32 @@ def get_current_conditions(location_key):
 
 
 def main ():
+    #prompt the user for the player and location they would like to analyze
     playerName = input("Enter player of interest: ")
+    city = input("Enter the location (city) of the golf tournament: ")
+
+    #Retrieve player ID, necessary for URL and scrape player data
     csv_file = 'player_IDs.csv'
     ID = searchPlayerID(csv_file, playerName)
-
-    url = f"https://www.pgatour.com/player/{ID}/{playerName}/stats"
-    soup = scrape(url)
+    if ID: 
+        url = f"https://www.pgatour.com/player/{ID}/{playerName}/stats"
+        soup = scrape(url)
+        stats = scrapeStats(soup)
+    else:
+        return
     
-    stats = scrapeStats(soup)
-    
-
-    city = input("Enter the location (city) of the golf tournament: ")
+    #Retrieve the location key and current conditions from weather API
     locationKey = weather(city)
-    currentConditions = get_current_conditions(locationKey)
-    temperature = currentConditions['Temperature']['Imperial']['Value']  
-    has_precipitation = currentConditions['HasPrecipitation']
-    precipitation_type = currentConditions.get('PrecipitationType', 'None')
-    wind_speed = currentConditions['Wind']['Speed']['Imperial']['Value']  
-    visibility = currentConditions['Visibility']['Imperial']['Value']  
+    if locationKey:
+        currentConditions = get_current_conditions(locationKey)
+        temperature = currentConditions['Temperature']['Imperial']['Value']  
+        has_precipitation = currentConditions['HasPrecipitation']
+        precipitation_type = currentConditions.get('PrecipitationType', 'None')
+        wind_speed = currentConditions['Wind']['Speed']['Imperial']['Value']  
+        visibility = currentConditions['Visibility']['Imperial']['Value']  
 
-    createCSV(stats, playerName, temperature, has_precipitation, precipitation_type, wind_speed, visibility)
+        #Create a csv cleanly outlining the data set
+        createCSV(stats, playerName, temperature, has_precipitation, precipitation_type, wind_speed, visibility)
 
 if __name__ == "__main__":
     main()
