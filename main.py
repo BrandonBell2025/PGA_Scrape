@@ -60,12 +60,13 @@ def searchPlayerID(csv_file, playerName):
         return None
     
 def clean_stat_value(value):
-    # Remove quotes and clean specific stat formats
-    value = value.replace('"', '')
-
+    # Remove commas from numeric values
     if '$' in value:
-        return value
-    
+        # Ensure the dollar sign stays, but remove commas from the amount
+        value = value.replace(",", "")
+    elif ',' in value:
+        # Remove commas in other numeric values
+        value = value.replace(",", "")
     if "'" in value:
         value = value.replace(" ", "")
     
