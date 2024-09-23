@@ -24,10 +24,18 @@ Such a comprehensive dataset is not widely available, offering a distinct advant
    ```bash
    pip install -r requirements.txt
 
-3. **Run the program:**:
+3. **Obtain an AccuWeather API Key**:
+   - Sign up for an AccuWeather API account at AccuWeather Developer Portal.
+   - Generate an API key and add it to your environment variables (e.g., .env file) as WEATHER_API.
+
+4. **Run the updatePlayerIDs.py script to ensure the player ID database is up to date**:
+   ```bash
+   python updatePlayerIDs.py
+
+5. **Run the program**:
    ```bash
    python main.py
 
-4. **Input player name and location to generate a CSV report containing the combined player stats and weather data.**
+6. **Input player name and location to generate a CSV report containing the combined player stats and weather data.**
 
 
